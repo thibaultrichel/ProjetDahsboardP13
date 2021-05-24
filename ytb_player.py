@@ -1,16 +1,18 @@
+import subprocess
 import sys
-import time
-import threading
+from threading import Thread
 from math import sqrt
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-import requests
 
 
 class YoutubePlayer(QMainWindow):
     def __init__(self):
         super(YoutubePlayer, self).__init__()
+
+        self.url = "https://www.youtube.com/watch?v=HmZKgaHa3Fg"
+        self.urlId = self.url.split('v=')[-1]
 
         ###################################################################################
 
@@ -27,13 +29,13 @@ class YoutubePlayer(QMainWindow):
 
         self.webView = QWebEngineView()
 
-        htmlString = """
+        htmlString = f"""
                     <iframe width="100%" height="100%" 
-                            src="https://www.youtube.com/embed/HmZKgaHa3Fg?rel=0&showinfo=0&autoplay=1"
+                            src="https://www.youtube.com/embed/{self.urlId}?rel=0&showinfo=0&autoplay=1"
                             frameborder="0">
                     </iframe>
                      """
-        self.webView.setHtml(htmlString, QUrl("https://www.youtube.com/watch?v=HmZKgaHa3Fg"))
+        self.webView.setHtml(htmlString, QUrl(self.url))
 
         # --------------------------------------------------------------------------------- Stats
 
@@ -79,13 +81,13 @@ class YoutubePlayer(QMainWindow):
         self.packetLossLabel = QLabel("Packet Loss :")
         self.packetLossLabel.setStyleSheet(gridLabel)
 
-        self.packetLossValue = QLabel("17 %")
+        self.packetLossValue = QLabel("collecting...")
         self.packetLossValue.setStyleSheet(gridValue)
 
         self.bandwidthLabel = QLabel("Bandwidth (up/down) :")
         self.bandwidthLabel.setStyleSheet(gridLabel)
 
-        self.bandwidthValue = QLabel("27.43 Mbps / 27.43 Mbps")
+        self.bandwidthValue = QLabel("collecting...")
         self.bandwidthValue.setStyleSheet(gridValue)
 
         self.networkContentLayout.addWidget(self.latencyLabel, 0, 0)
@@ -135,27 +137,35 @@ class YoutubePlayer(QMainWindow):
         self.mainLayout.addWidget(self.webView)
         self.mainLayout.addWidget(self.statsWidget)
 
-        self.startThread()
+        self.startThreads()
 
     def resizeEvent(self, event):
         self.statsWidget.setMaximumWidth(round(self.width() * 35 / 100))
 
-    def startThread(self):
-        thread = threading.Thread(target=self.getAllStats)
-        thread.start()
+    def startThreads(self):
+        thread1 = Thread(target=self.displayAllStats)
+        thread1.start()
 
-    def getAllStats(self):
-        latency, jitter = self.getLatencyJitter()
+    def displayAllStats(self):
+        latency, jitter, packetloss, upVal, upUnit, downVal, downUnit = self.getAllStats()
         self.latencyValue.setText(f"{latency} ms")
         self.jitterValue.setText(f"{jitter} ms")
+        self.packetLossValue.setText(f"{packetloss} %")
+        self.bandwidthValue.setText(f"{upVal} {upUnit}  /  {downVal} {downUnit}")
 
-    @staticmethod
-    def getLatencyJitter():
+    def getAllStats(self):
         lats = []
-        for _ in range(5):
-            lat = requests.get("https://www.youtube.com/watch?v=ihJZUux8ZOQ").elapsed.total_seconds() * 1000
-            lats.append(lat)
-            time.sleep(1)
+        res = subprocess.check_output(f"serviceping {self.url} -c 5", shell=True).decode('utf-8')
+        lines = res.split('\n')
+        packetloss = 'unknown'
+
+        for li in lines:
+            if 'time=' in li:
+                lat = float(li.split('time=')[-1].split(' ')[0])
+                lats.append(lat)
+            if 'packet loss' in li:
+                packetloss = float(li.split(', ')[2].split('%')[0])
+
         summ = jit = 0
         for la in lats:
             summ += la
@@ -165,13 +175,19 @@ class YoutubePlayer(QMainWindow):
             jit += j
         jitter = round(sqrt(jit/len(jitters)), 2)
         latency = round(mean, 2)
-        return latency, jitter
 
-    def getPacketLoss(self):
-        pass
+        bw = subprocess.check_output("speedtest", shell=True).decode('utf-8')
+        lines = bw.split('\n')
+        upVal = downVal = downUnit = upUnit = 'unknown'
+        for li in lines:
+            if 'Download' in li:
+                downVal = float(li.split(' ')[1])
+                downUnit = li.split(' ')[-1]
+            if 'Upload' in li:
+                upVal = float(li.split(' ')[1])
+                upUnit = li.split(' ')[-1]
 
-    def getVideoStats(self):
-        pass
+        return latency, jitter, packetloss, upVal, upUnit, downVal, downUnit
 
 
 if __name__ == '__main__':

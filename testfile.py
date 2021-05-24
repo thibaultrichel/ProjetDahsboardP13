@@ -2,8 +2,9 @@ import os
 from tcp_latency import measure_latency
 import requests
 import time
-from videoprops import get_video_properties
 import threading
+import serviceping
+import subprocess
 
 # props = get_video_properties('/Users/thibaultrichel/Desktop/COURS/PARIS/Projet P13/vidtest.mp4')
 #
@@ -14,7 +15,8 @@ import threading
 # Frame rate: {props['avg_frame_rate']}
 # ''')
 
-# url = "https://www.youtube.com/watch?v=ihJZUux8ZOQ"
+url = "https://www.youtube.com/watch?v=ihJZUux8ZOQ"
+
 
 # os.system(f"ping youtube.com -c 5")
 
@@ -46,25 +48,26 @@ import threading
 # print(f"mean:{mean}")
 # print(f"jitter:{jitter}")
 
+# res = subprocess.check_output(f"serviceping {url} -c 5", shell=True).decode('utf-8')
+# lines = res.split('\n')
+# lats = []
+# packetloss = 'unknown'
+#
+# for li in lines:
+#     if 'time=' in li:
+#         lat = float(li.split('time=')[-1].split(' ')[0])
+#         lats.append(lat)
+#     if 'packet loss' in li:
+#         packetloss = float(li.split(', ')[2].split('%')[0])
+#
+#
+# print(lats)
+# print(f"{packetloss} %")
 
-def test():
-    print('sleep 1...')
-    time.sleep(1)
-    print('sleep ok')
-
-
-start = time.time()
-
-thread1 = threading.Thread(target=test)
-thread2 = threading.Thread(target=test)
-
-thread1.start()
-thread2.start()
-
-thread1.join()
-thread2.join()
-
-finish = time.time()
-
-print(f"finished in {finish-start}")
-
+b = subprocess.check_output("speedtest", shell=True).decode('utf-8')
+lines = b.split('\n')
+for li in lines:
+    if 'Download' in li:
+        down = float(li.split(' ')[1])
+    if 'Upload' in li:
+        up = float(li.split(' ')[1])
