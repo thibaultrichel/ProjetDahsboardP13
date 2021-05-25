@@ -5,14 +5,24 @@ from math import sqrt
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtWebEngineWidgets import QWebEngineView
+import pytube
 
 
 class YoutubePlayer(QMainWindow):
     def __init__(self):
         super(YoutubePlayer, self).__init__()
 
-        self.url = "https://www.youtube.com/watch?v=HmZKgaHa3Fg"
+        self.url = "https://www.youtube.com/watch?v=ekOPUNwXMlg"
         self.urlId = self.url.split('v=')[-1]
+
+        self.defaultResolutions = {
+            "hd1440": "2560 x 1440",
+            "hd1080": "1920 x 1080",
+            "720": "1280 x 720",
+            "480": "854 x 480",
+            "360": "640 x 360",
+            "240": "426 x 240"
+        }
 
         ###################################################################################
 
@@ -27,12 +37,18 @@ class YoutubePlayer(QMainWindow):
 
         # --------------------------------------------------------------------------------- QWebView
 
+        # results = self.getBestQualityCodecFramerate()
+        self.bestQuality, self.codec, self.framerate = self.getBestQualityCodecFramerate()
+        if int(self.bestQuality) > 720:
+            self.bestQuality = 'hd' + str(self.bestQuality)
         self.webView = QWebEngineView()
 
         htmlString = f"""
-                    <iframe width="100%" height="100%" 
-                            src="https://www.youtube.com/embed/{self.urlId}?rel=0&showinfo=0&autoplay=1"
-                            frameborder="0">
+                    <iframe 
+                            src="https://www.youtube.com/embed/{self.urlId}?autoplay=0&showinfo=0&
+                            vq={self.bestQuality}&controls=0"
+                            width="100%" height="100%" 
+                            frameborder="0" allowautoplay>
                     </iframe>
                      """
         self.webView.setHtml(htmlString, QUrl(self.url))
@@ -48,7 +64,7 @@ class YoutubePlayer(QMainWindow):
         # Main widgets and layouts
         self.statsWidget = QWidget()
         self.statsWidget.setMinimumWidth(200)
-        self.statsWidget.setMaximumWidth(round(self.width() * 35 / 100))
+        self.statsWidget.setMaximumWidth(round(self.width() * 25 / 100))
         self.statsLayout = QVBoxLayout()
         self.statsWidget.setLayout(self.statsLayout)
 
@@ -69,25 +85,25 @@ class YoutubePlayer(QMainWindow):
         self.latencyLabel = QLabel("Latency :")
         self.latencyLabel.setStyleSheet(gridLabel)
 
-        self.latencyValue = QLabel("collecting...")
+        self.latencyValue = QLabel("Click on 'Start measuring'")
         self.latencyValue.setStyleSheet(gridValue)
 
         self.jitterLabel = QLabel("Jitter :")
         self.jitterLabel.setStyleSheet(gridLabel)
 
-        self.jitterValue = QLabel("collecting...")
+        self.jitterValue = QLabel("Click on 'Start measuring'")
         self.jitterValue.setStyleSheet(gridValue)
 
         self.packetLossLabel = QLabel("Packet Loss :")
         self.packetLossLabel.setStyleSheet(gridLabel)
 
-        self.packetLossValue = QLabel("collecting...")
+        self.packetLossValue = QLabel("Click on 'Start measuring'")
         self.packetLossValue.setStyleSheet(gridValue)
 
         self.bandwidthLabel = QLabel("Bandwidth (up/down) :")
         self.bandwidthLabel.setStyleSheet(gridLabel)
 
-        self.bandwidthValue = QLabel("collecting...")
+        self.bandwidthValue = QLabel("Click on 'Start measuring'")
         self.bandwidthValue.setStyleSheet(gridValue)
 
         self.networkContentLayout.addWidget(self.latencyLabel, 0, 0)
@@ -111,19 +127,30 @@ class YoutubePlayer(QMainWindow):
         self.codecLabel = QLabel("Codec :")
         self.codecLabel.setStyleSheet(gridLabel)
 
-        self.codecValue = QLabel("h264")
+        self.codecValue = QLabel("Click on 'Start measuring'")
         self.codecValue.setStyleSheet(gridValue)
 
         self.resolutionLabel = QLabel("Resolution :")
         self.resolutionLabel.setStyleSheet(gridLabel)
 
-        self.resolutionValue = QLabel("1280×720")
+        self.resolutionValue = QLabel("Click on 'Start measuring'")
         self.resolutionValue.setStyleSheet(gridValue)
+
+        self.framerateLabel = QLabel("Frame rate :")
+        self.framerateLabel.setStyleSheet(gridLabel)
+
+        self.framerateValue = QLabel("Click on 'Start measuring'")
+        self.framerateValue.setStyleSheet(gridValue)
 
         self.videoContentLayout.addWidget(self.codecLabel, 0, 0)
         self.videoContentLayout.addWidget(self.codecValue, 0, 1)
         self.videoContentLayout.addWidget(self.resolutionLabel, 1, 0)
         self.videoContentLayout.addWidget(self.resolutionValue, 1, 1)
+        self.videoContentLayout.addWidget(self.framerateLabel, 2, 0)
+        self.videoContentLayout.addWidget(self.framerateValue, 2, 1)
+
+        self.btnStartMeasuring = QPushButton("Start measuring")
+        self.btnStartMeasuring.clicked.connect(self.startThreads)
 
         # Adding widgets
         self.statsLayout.addWidget(self.title)
@@ -131,18 +158,25 @@ class YoutubePlayer(QMainWindow):
         self.statsLayout.addWidget(self.networkContentWidget)
         self.statsLayout.addWidget(self.videoStatsLabel)
         self.statsLayout.addWidget(self.videoContentWidget)
+        self.statsLayout.addWidget(self.btnStartMeasuring)
 
         ###################################################################################
 
         self.mainLayout.addWidget(self.webView)
         self.mainLayout.addWidget(self.statsWidget)
-
-        self.startThreads()
+        self.showMaximized()
 
     def resizeEvent(self, event):
-        self.statsWidget.setMaximumWidth(round(self.width() * 35 / 100))
+        self.statsWidget.setMaximumWidth(round(self.width() * 25 / 100))
 
     def startThreads(self):
+        self.latencyValue.setText('collecting...')
+        self.packetLossValue.setText('collecting...')
+        self.jitterValue.setText('collecting...')
+        self.bandwidthValue.setText('collecting...')
+        self.resolutionValue.setText(self.defaultResolutions[self.bestQuality])
+        self.codecValue.setText(self.codec)
+        self.framerateValue.setText(f'{str(self.framerate)} fps')
         thread1 = Thread(target=self.displayAllStats)
         thread1.start()
 
@@ -188,6 +222,19 @@ class YoutubePlayer(QMainWindow):
                 upUnit = li.split(' ')[-1]
 
         return latency, jitter, packetloss, upVal, upUnit, downVal, downUnit
+
+    def getBestQualityCodecFramerate(self):
+        vid = pytube.YouTube(self.url)
+        streams = [stream for stream in vid.streams if not stream.is_progressive]
+        results = []
+        for i, s in enumerate(streams):
+            if s.resolution is not None:
+                resol = int(s.resolution.replace('p', ''))
+                codec = vid.streams[i].video_codec.split('.')[0]
+                rate = vid.streams[i].fps
+                results.append((resol, codec, rate))
+        final = max(results, key=lambda x: x[0])
+        return final
 
 
 if __name__ == '__main__':

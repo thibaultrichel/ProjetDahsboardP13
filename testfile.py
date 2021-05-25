@@ -14,6 +14,7 @@ import subprocess
 # Aspect ratio: {props['display_aspect_ratio']}
 # Frame rate: {props['avg_frame_rate']}
 # ''')
+import pytube
 
 url = "https://www.youtube.com/watch?v=ihJZUux8ZOQ"
 
@@ -64,10 +65,13 @@ url = "https://www.youtube.com/watch?v=ihJZUux8ZOQ"
 # print(lats)
 # print(f"{packetloss} %")
 
-b = subprocess.check_output("speedtest", shell=True).decode('utf-8')
-lines = b.split('\n')
-for li in lines:
-    if 'Download' in li:
-        down = float(li.split(' ')[1])
-    if 'Upload' in li:
-        up = float(li.split(' ')[1])
+# b = subprocess.check_output("speedtest", shell=True).decode('utf-8')
+# lines = b.split('\n')
+# for li in lines:
+#     if 'Download' in li:
+#         down = float(li.split(' ')[1])
+#     if 'Upload' in li:
+#         up = float(li.split(' ')[1])
+
+vid = pytube.YouTube(url)
+print(vid.streams[0])
