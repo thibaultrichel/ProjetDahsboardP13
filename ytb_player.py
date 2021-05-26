@@ -24,6 +24,9 @@ class YoutubePlayer(QMainWindow):
             "240": "426 x 240"
         }
 
+        self.latencyList = []
+        self.jitterList = []
+
         ###################################################################################
 
         self.setWindowTitle('Dashboard LA/P13 - Victor-Alexis PACAUD / Thibault RICHEL')
@@ -37,7 +40,6 @@ class YoutubePlayer(QMainWindow):
 
         # --------------------------------------------------------------------------------- QWebView
 
-        # results = self.getBestQualityCodecFramerate()
         self.bestQuality, self.codec, self.framerate = self.getBestQualityCodecFramerate()
         if int(self.bestQuality) > 720:
             self.bestQuality = 'hd' + str(self.bestQuality)
@@ -103,7 +105,7 @@ class YoutubePlayer(QMainWindow):
         self.bandwidthLabel = QLabel("Bandwidth (up/down) :")
         self.bandwidthLabel.setStyleSheet(gridLabel)
 
-        self.bandwidthValue = QLabel("Click on 'Start measuring'")
+        self.bandwidthValue = QLabel("Click on 'Start speedtest'")
         self.bandwidthValue.setStyleSheet(gridValue)
 
         self.networkContentLayout.addWidget(self.latencyLabel, 0, 0)
@@ -150,7 +152,10 @@ class YoutubePlayer(QMainWindow):
         self.videoContentLayout.addWidget(self.framerateValue, 2, 1)
 
         self.btnStartMeasuring = QPushButton("Start measuring")
-        self.btnStartMeasuring.clicked.connect(self.startThreads)
+        self.btnStartMeasuring.clicked.connect(self.startMeasuringLoop)
+
+        self.btnSpeedtest = QPushButton("Start speedtest")
+        self.btnSpeedtest.clicked.connect(self.startSpeedtest)
 
         # Adding widgets
         self.statsLayout.addWidget(self.title)
@@ -159,6 +164,13 @@ class YoutubePlayer(QMainWindow):
         self.statsLayout.addWidget(self.videoStatsLabel)
         self.statsLayout.addWidget(self.videoContentWidget)
         self.statsLayout.addWidget(self.btnStartMeasuring)
+        self.statsLayout.addWidget(self.btnSpeedtest)
+
+        ###################################################################################
+
+        # Measuring loop
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.startThreads)
 
         ###################################################################################
 
@@ -169,59 +181,61 @@ class YoutubePlayer(QMainWindow):
     def resizeEvent(self, event):
         self.statsWidget.setMaximumWidth(round(self.width() * 25 / 100))
 
-    def startThreads(self):
+    def startMeasuringLoop(self):
         self.latencyValue.setText('collecting...')
         self.packetLossValue.setText('collecting...')
         self.jitterValue.setText('collecting...')
-        self.bandwidthValue.setText('collecting...')
+        self.timer.start(2000)
+
+    def startThreads(self):
         self.resolutionValue.setText(self.defaultResolutions[self.bestQuality])
         self.codecValue.setText(self.codec)
         self.framerateValue.setText(f'{str(self.framerate)} fps')
+
         thread1 = Thread(target=self.displayAllStats)
         thread1.start()
 
+    def startSpeedtest(self):
+        self.bandwidthValue.setText('collecting...')
+        thread2 = Thread(target=self.displaySpeedtest)
+        thread2.start()
+
     def displayAllStats(self):
-        latency, jitter, packetloss, upVal, upUnit, downVal, downUnit = self.getAllStats()
+        latency, packetloss = self.getLatencyPacketloss()
+        jitter = self.getJitter()
         self.latencyValue.setText(f"{latency} ms")
         self.jitterValue.setText(f"{jitter} ms")
         self.packetLossValue.setText(f"{packetloss} %")
+
+    def displaySpeedtest(self):
+        upVal, upUnit, downVal, downUnit = self.getSpeedtest()
         self.bandwidthValue.setText(f"{upVal} {upUnit}  /  {downVal} {downUnit}")
 
-    def getAllStats(self):
-        lats = []
-        res = subprocess.check_output(f"serviceping {self.url} -c 5", shell=True).decode('utf-8')
+    def getLatencyPacketloss(self):
+        res = subprocess.check_output(f"serviceping {self.url} -c 1", shell=True).decode('utf-8')
         lines = res.split('\n')
-        packetloss = 'unknown'
-
+        latency = packetloss = 'unknown'
         for li in lines:
             if 'time=' in li:
-                lat = float(li.split('time=')[-1].split(' ')[0])
-                lats.append(lat)
+                latency = float(li.split('time=')[-1].split(' ')[0])
+                self.latencyList.append(latency)
             if 'packet loss' in li:
                 packetloss = float(li.split(', ')[2].split('%')[0])
+        return latency, packetloss
 
+    def getJitter(self):
+        if len(self.latencyList) >= 5:
+            measures = self.latencyList[-5:]
+        else:
+            measures = self.latencyList
         summ = jit = 0
-        for la in lats:
-            summ += la
-        mean = summ/len(lats)
-        jitters = [(mean - lat)**2 for lat in lats]
+        for lat in measures:
+            summ += lat
+        mean = summ/len(measures)
+        jitters = [(mean - lat) ** 2 for lat in measures]
         for j in jitters:
             jit += j
-        jitter = round(sqrt(jit/len(jitters)), 2)
-        latency = round(mean, 2)
-
-        bw = subprocess.check_output("speedtest", shell=True).decode('utf-8')
-        lines = bw.split('\n')
-        upVal = downVal = downUnit = upUnit = 'unknown'
-        for li in lines:
-            if 'Download' in li:
-                downVal = float(li.split(' ')[1])
-                downUnit = li.split(' ')[-1]
-            if 'Upload' in li:
-                upVal = float(li.split(' ')[1])
-                upUnit = li.split(' ')[-1]
-
-        return latency, jitter, packetloss, upVal, upUnit, downVal, downUnit
+        return round(sqrt(jit / len(jitters)), 2)
 
     def getBestQualityCodecFramerate(self):
         vid = pytube.YouTube(self.url)
@@ -235,6 +249,20 @@ class YoutubePlayer(QMainWindow):
                 results.append((resol, codec, rate))
         final = max(results, key=lambda x: x[0])
         return final
+
+    @staticmethod
+    def getSpeedtest():
+        bw = subprocess.check_output("speedtest", shell=True).decode('utf-8')
+        lines = bw.split('\n')
+        upVal = downVal = downUnit = upUnit = 'unknown'
+        for li in lines:
+            if 'Download' in li:
+                downVal = float(li.split(' ')[1])
+                downUnit = li.split(' ')[-1]
+            if 'Upload' in li:
+                upVal = float(li.split(' ')[1])
+                upUnit = li.split(' ')[-1]
+        return upVal, upUnit, downVal, downUnit
 
 
 if __name__ == '__main__':
