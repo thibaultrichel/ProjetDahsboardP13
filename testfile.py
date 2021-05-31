@@ -1,3 +1,4 @@
+import pandas as pd
 import os
 from tcp_latency import measure_latency
 import requests
@@ -73,5 +74,9 @@ url = "https://www.youtube.com/watch?v=ihJZUux8ZOQ"
 #     if 'Upload' in li:
 #         up = float(li.split(' ')[1])
 
-vid = pytube.YouTube(url)
-print(vid.streams[0])
+# vid = pytube.YouTube(url)
+# print(vid.streams[0])
+
+df = pd.DataFrame(columns=['latency', 'jitter', 'packetloss'])
+df = df.append({'latency': '10ms', 'jitter': '3.2ms', 'packetloss': '0.1%'}, ignore_index=True)
+print(df)

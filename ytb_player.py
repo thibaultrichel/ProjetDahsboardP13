@@ -1,3 +1,4 @@
+from datetime import datetime
 import subprocess
 import sys
 from threading import Thread
@@ -6,13 +7,14 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 import pytube
+import pandas as pd
 
 
 class YoutubePlayer(QMainWindow):
     def __init__(self):
         super(YoutubePlayer, self).__init__()
 
-        self.url = "https://www.youtube.com/watch?v=ekOPUNwXMlg"
+        self.url = "https://www.youtube.com/watch?v=HmZKgaHa3Fg"
         self.urlId = self.url.split('v=')[-1]
 
         self.defaultResolutions = {
@@ -26,6 +28,8 @@ class YoutubePlayer(QMainWindow):
 
         self.latencyList = []
         self.jitterList = []
+
+        self.dataframe = pd.DataFrame(columns=['date', 'latency', 'jitter', 'packetloss'])
 
         ###################################################################################
 
@@ -178,6 +182,19 @@ class YoutubePlayer(QMainWindow):
         self.mainLayout.addWidget(self.statsWidget)
         self.showMaximized()
 
+    def closeEvent(self, event):
+        quitter = QMessageBox()
+        quitter.setText("Attention !")
+        quitter.setInformativeText("Save network stats in csv file?")
+        quitter.setStandardButtons(QMessageBox.Cancel | QMessageBox.Ok)
+        quitter.setDefaultButton(QMessageBox.Ok)
+        reply = quitter.exec_()
+        if reply == QMessageBox.Ok:
+            self.dataframe.to_csv('network-stats.csv')
+            event.accept()
+        else:
+            event.ignore()
+
     def resizeEvent(self, event):
         self.statsWidget.setMaximumWidth(round(self.width() * 25 / 100))
 
@@ -207,6 +224,12 @@ class YoutubePlayer(QMainWindow):
         self.jitterValue.setText(f"{jitter} ms")
         self.packetLossValue.setText(f"{packetloss} %")
 
+        now = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        self.dataframe = self.dataframe.append({'date': now,
+                                                'latency': str(latency) + 'ms',
+                                                'jitter': str(jitter) + 'ms',
+                                                'packetloss': str(packetloss) + '%'}, ignore_index=True)
+
     def displaySpeedtest(self):
         upVal, upUnit, downVal, downUnit = self.getSpeedtest()
         self.bandwidthValue.setText(f"{upVal} {upUnit}  /  {downVal} {downUnit}")
@@ -231,7 +254,7 @@ class YoutubePlayer(QMainWindow):
         summ = jit = 0
         for lat in measures:
             summ += lat
-        mean = summ/len(measures)
+        mean = summ / len(measures)
         jitters = [(mean - lat) ** 2 for lat in measures]
         for j in jitters:
             jit += j
