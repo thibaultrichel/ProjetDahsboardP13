@@ -29,7 +29,11 @@ class YoutubePlayer(QMainWindow):
         self.latencyList = []
         self.jitterList = []
 
-        self.dataframe = pd.DataFrame(columns=['date', 'latency', 'jitter', 'packetloss'])
+        try:
+            self.dataframe = pd.read_csv('network-stats.csv', index_col=False)
+            print(self.dataframe)
+        except FileNotFoundError:
+            self.dataframe = pd.DataFrame(columns=['date', 'latency', 'jitter', 'packetloss'])
 
         ###################################################################################
 
@@ -190,7 +194,7 @@ class YoutubePlayer(QMainWindow):
         quitter.setDefaultButton(QMessageBox.Ok)
         reply = quitter.exec_()
         if reply == QMessageBox.Ok:
-            self.dataframe.to_csv('network-stats.csv')
+            self.dataframe.to_csv('network-stats.csv', index=False)
             event.accept()
         else:
             event.ignore()
