@@ -1,3 +1,5 @@
+import pickle
+import random
 from datetime import datetime
 import subprocess
 import sys
@@ -31,7 +33,6 @@ class YoutubePlayer(QMainWindow):
 
         try:
             self.dataframe = pd.read_csv('network-stats.csv', index_col=False)
-            print(self.dataframe)
         except FileNotFoundError:
             self.dataframe = pd.DataFrame(columns=['date', 'latency', 'jitter', 'packetloss'])
 
@@ -48,15 +49,16 @@ class YoutubePlayer(QMainWindow):
 
         # --------------------------------------------------------------------------------- QWebView
 
-        self.bestQuality, self.codec, self.framerate = self.getBestQualityCodecFramerate()
-        if int(self.bestQuality) > 720:
-            self.bestQuality = 'hd' + str(self.bestQuality)
+        randomResolution = False
+        self.videoQuality, self.codec, self.framerate = self.getQualityCodecFramerate(randomResolution)
+        if int(self.videoQuality) > 720:
+            self.videoQuality = 'hd' + str(self.videoQuality)
         self.webView = QWebEngineView()
 
         htmlString = f"""
                     <iframe 
                             src="https://www.youtube.com/embed/{self.urlId}?autoplay=0&showinfo=0&
-                            vq={self.bestQuality}&controls=0"
+                            vq={self.videoQuality}&controls=0"
                             width="100%" height="100%" 
                             frameborder="0" allowautoplay>
                     </iframe>
@@ -110,20 +112,12 @@ class YoutubePlayer(QMainWindow):
         self.packetLossValue = QLabel("Click on 'Start measuring'")
         self.packetLossValue.setStyleSheet(gridValue)
 
-        self.bandwidthLabel = QLabel("Bandwidth (up/down) :")
-        self.bandwidthLabel.setStyleSheet(gridLabel)
-
-        self.bandwidthValue = QLabel("Click on 'Start speedtest'")
-        self.bandwidthValue.setStyleSheet(gridValue)
-
         self.networkContentLayout.addWidget(self.latencyLabel, 0, 0)
         self.networkContentLayout.addWidget(self.latencyValue, 0, 1)
         self.networkContentLayout.addWidget(self.jitterLabel, 1, 0)
         self.networkContentLayout.addWidget(self.jitterValue, 1, 1)
         self.networkContentLayout.addWidget(self.packetLossLabel, 2, 0)
         self.networkContentLayout.addWidget(self.packetLossValue, 2, 1)
-        self.networkContentLayout.addWidget(self.bandwidthLabel, 3, 0)
-        self.networkContentLayout.addWidget(self.bandwidthValue, 3, 1)
 
         # Video stats
         self.videoStatsLabel = QLabel("Video informations :")
@@ -162,8 +156,9 @@ class YoutubePlayer(QMainWindow):
         self.btnStartMeasuring = QPushButton("Start measuring")
         self.btnStartMeasuring.clicked.connect(self.startMeasuringLoop)
 
-        self.btnSpeedtest = QPushButton("Start speedtest")
-        self.btnSpeedtest.clicked.connect(self.startSpeedtest)
+        self.btnStopGetScore = QPushButton("Stop and get QoS score")
+        self.btnStopGetScore.clicked.connect(self.displayScoreQOS)
+        self.btnStopGetScore.setEnabled(False)
 
         # Adding widgets
         self.statsLayout.addWidget(self.title)
@@ -172,7 +167,7 @@ class YoutubePlayer(QMainWindow):
         self.statsLayout.addWidget(self.videoStatsLabel)
         self.statsLayout.addWidget(self.videoContentWidget)
         self.statsLayout.addWidget(self.btnStartMeasuring)
-        self.statsLayout.addWidget(self.btnSpeedtest)
+        self.statsLayout.addWidget(self.btnStopGetScore)
 
         ###################################################################################
 
@@ -203,23 +198,20 @@ class YoutubePlayer(QMainWindow):
         self.statsWidget.setMaximumWidth(round(self.width() * 25 / 100))
 
     def startMeasuringLoop(self):
+        self.btnStopGetScore.setEnabled(True)
+        self.btnStartMeasuring.setEnabled(False)
         self.latencyValue.setText('collecting...')
         self.packetLossValue.setText('collecting...')
         self.jitterValue.setText('collecting...')
         self.timer.start(2000)
 
     def startThreads(self):
-        self.resolutionValue.setText(self.defaultResolutions[self.bestQuality])
+        self.resolutionValue.setText(self.defaultResolutions[str(self.videoQuality)])
         self.codecValue.setText(self.codec)
         self.framerateValue.setText(f'{str(self.framerate)} fps')
 
         thread1 = Thread(target=self.displayAllStats)
         thread1.start()
-
-    def startSpeedtest(self):
-        self.bandwidthValue.setText('collecting...')
-        thread2 = Thread(target=self.displaySpeedtest)
-        thread2.start()
 
     def displayAllStats(self):
         latency, packetloss = self.getLatencyPacketloss()
@@ -233,10 +225,6 @@ class YoutubePlayer(QMainWindow):
                                                 'latency': str(latency) + 'ms',
                                                 'jitter': str(jitter) + 'ms',
                                                 'packetloss': str(packetloss) + '%'}, ignore_index=True)
-
-    def displaySpeedtest(self):
-        upVal, upUnit, downVal, downUnit = self.getSpeedtest()
-        self.bandwidthValue.setText(f"{upVal} {upUnit}  /  {downVal} {downUnit}")
 
     def getLatencyPacketloss(self):
         res = subprocess.check_output(f"serviceping {self.url} -c 1", shell=True).decode('utf-8')
@@ -264,7 +252,7 @@ class YoutubePlayer(QMainWindow):
             jit += j
         return round(sqrt(jit / len(jitters)), 2)
 
-    def getBestQualityCodecFramerate(self):
+    def getQualityCodecFramerate(self, randomRes):
         vid = pytube.YouTube(self.url)
         streams = [stream for stream in vid.streams if not stream.is_progressive]
         results = []
@@ -274,22 +262,45 @@ class YoutubePlayer(QMainWindow):
                 codec = vid.streams[i].video_codec.split('.')[0]
                 rate = vid.streams[i].fps
                 results.append((resol, codec, rate))
-        final = max(results, key=lambda x: x[0])
+        if randomRes:
+            final = random.choice(results)
+        else:
+            final = max(results, key=lambda x: x[0])
         return final
 
-    @staticmethod
-    def getSpeedtest():
-        bw = subprocess.check_output("speedtest", shell=True).decode('utf-8')
-        lines = bw.split('\n')
-        upVal = downVal = downUnit = upUnit = 'unknown'
-        for li in lines:
-            if 'Download' in li:
-                downVal = float(li.split(' ')[1])
-                downUnit = li.split(' ')[-1]
-            if 'Upload' in li:
-                upVal = float(li.split(' ')[1])
-                upUnit = li.split(' ')[-1]
-        return upVal, upUnit, downVal, downUnit
+    def predictModel(self, height, width, frame_rate):
+        self.timer.stop()
+
+        filename = 'qos-model.pickle'
+        loaded_model = pickle.load(open(filename, 'rb'))
+
+        NewSample = {'resolution_height': [height],
+                     'resolution_width': [width],
+                     'frame_rate': [frame_rate],
+                     }
+
+        dfNew = pd.DataFrame(NewSample, columns=['resolution_height', 'resolution_width', 'frame_rate'])
+
+        MOS_resultat = loaded_model.predict(dfNew)[0]
+
+        return MOS_resultat
+
+    def displayScoreQOS(self):
+        height = self.defaultResolutions[str(self.videoQuality)].split(' x ')[0]
+        width = self.defaultResolutions[str(self.videoQuality)].split(' x ')[1]
+        score = self.predictModel(height, width, self.framerate)
+        disp = QDialog()
+        layout = QVBoxLayout()
+
+        scoreLabel = QLabel(f"QoS score : <b>{score}/5</b>")
+        scoreLabel.setStyleSheet("QLabel { font-size: 20px }")
+        buttonbox = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttonbox.accepted.connect(disp.accept)
+
+        layout.addWidget(scoreLabel)
+        layout.addWidget(buttonbox)
+        disp.setLayout(layout)
+        disp.exec_()
 
 
 if __name__ == '__main__':

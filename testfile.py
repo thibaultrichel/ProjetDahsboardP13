@@ -6,6 +6,7 @@ import time
 import threading
 import serviceping
 import subprocess
+import random
 
 # props = get_video_properties('/Users/thibaultrichel/Desktop/COURS/PARIS/Projet P13/vidtest.mp4')
 #
@@ -15,9 +16,7 @@ import subprocess
 # Aspect ratio: {props['display_aspect_ratio']}
 # Frame rate: {props['avg_frame_rate']}
 # ''')
-import pytube
 
-url = "https://www.youtube.com/watch?v=ihJZUux8ZOQ"
 
 
 # os.system(f"ping youtube.com -c 5")
@@ -76,7 +75,17 @@ url = "https://www.youtube.com/watch?v=ihJZUux8ZOQ"
 
 # vid = pytube.YouTube(url)
 # print(vid.streams[0])
+import pytube
 
-df = pd.DataFrame(columns=['latency', 'jitter', 'packetloss'])
-df = df.append({'latency': '10ms', 'jitter': '3.2ms', 'packetloss': '0.1%'}, ignore_index=True)
-print(df)
+url = "https://www.youtube.com/watch?v=ihJZUux8ZOQ"
+vid = pytube.YouTube(url)
+streams = [stream for stream in vid.streams if not stream.is_progressive]
+results = []
+for i, s in enumerate(streams):
+    if s.resolution is not None:
+        resol = int(s.resolution.replace('p', ''))
+        codec = vid.streams[i].video_codec.split('.')[0]
+        rate = vid.streams[i].fps
+        results.append((resol, codec, rate))
+final = random.choice(results)
+print(final)
